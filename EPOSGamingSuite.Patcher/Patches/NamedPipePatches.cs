@@ -59,6 +59,37 @@ internal static class NamedPipePatches
                     prefix: new HarmonyMethod(typeof(NamedPipePatches), nameof(GetPipeFileHandle_Prefix)));
             }
         }
+
+        Type namedPipeServerType = servicesAsm.GetType("Sennheiser.Gs.UI.Services.Model.NamedPipeServer");
+        if (namedPipeServerType != null)
+        {
+            MethodInfo startMethod = AccessTools.Method(namedPipeServerType, "Start");
+            if (startMethod != null)
+            {
+                harmony.Patch(
+                    startMethod,
+                    postfix: new HarmonyMethod(typeof(NamedPipePatches), nameof(NamedPipeServer_Start_Postfix)));
+            }
+        }
+    }
+
+    public static void NamedPipeServer_Start_Postfix(object __instance)
+    {
+        try
+        {
+            if (__instance == null)
+            {
+                return;
+            }
+            FieldInfo threadField = AccessTools.Field(__instance.GetType(), "listenThread");
+            if (threadField?.GetValue(__instance) is Thread thread && thread.IsAlive)
+            {
+                thread.IsBackground = true;
+            }
+        }
+        catch
+        {
+        }
     }
 
     public static bool GetPipeFileHandle_Prefix(string pipeName, ref object __result)

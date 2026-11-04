@@ -49,8 +49,8 @@ All code in this repository is 100% open-source C# and can be inspected or built
 
 | File | SHA-256 | VirusTotal |
 | :--- | :--- | :--- |
-| `EPOSGamingSuite.Patcher.exe` | `f8dfd1330f8b46f5fefb3f2bce49b2b3f4952bd31ca404784751cf8f10084408` | [VirusTotal Report (EXE)](https://www.virustotal.com/gui/file/f8dfd1330f8b46f5fefb3f2bce49b2b3f4952bd31ca404784751cf8f10084408) |
-| `EPOSGamingSuitePatcher-v1.0.0-win-x86.zip` | `4afc8a97b4982080ab893c1285cc8b2f575c947dc8a5b545ed09489000c0ed9b` | [VirusTotal Report (ZIP)](https://www.virustotal.com/gui/file/4afc8a97b4982080ab893c1285cc8b2f575c947dc8a5b545ed09489000c0ed9b) |
+| `EPOSGamingSuite.Patcher.exe` | `66d5ca580f545012cc6301738c915c9effdf613e358f2a382c48a84386c2aecb` | [VirusTotal Report (EXE)](https://www.virustotal.com/gui/file/66d5ca580f545012cc6301738c915c9effdf613e358f2a382c48a84386c2aecb) |
+| `EPOSGamingSuitePatcher-v1.0.0-win-x86.zip` | `314995aa56d10713f3547c9bed1c50f48a1bc0f7fad05663a24ddab754812283` | [VirusTotal Report (ZIP)](https://www.virustotal.com/gui/file/314995aa56d10713f3547c9bed1c50f48a1bc0f7fad05663a24ddab754812283) |
 | Repository URL | `e0b04d7d00e070a04c0cb44752e710d78972c199d20ef6d73269ed46fb68cbb1` | [VirusTotal Report (Repo URL)](https://www.virustotal.com/gui/url/e0b04d7d00e070a04c0cb44752e710d78972c199d20ef6d73269ed46fb68cbb1) |
 
 ---

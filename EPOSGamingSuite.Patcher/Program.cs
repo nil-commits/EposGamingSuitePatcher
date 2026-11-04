@@ -66,15 +66,15 @@ public static class Program
             Environment.CurrentDirectory = installDir;
             RegisterAssemblyResolver(installDir);
 
+            // Ensure no unpatched/zombie EPOSGamingSuite.exe process is holding \\.\pipe\GSUIPipe (Error 231)
+            StopExistingUnpatchedInstances();
+
             // Load original assemblies into current AppDomain
             Assembly servicesAsm = Assembly.LoadFrom(Path.Combine(installDir, "GamingSuite.UI.Services.dll"));
             Assembly uiAsm = Assembly.LoadFrom(exePath);
 
-            // Ensure WPF pack://application:,,,/ relative URIs resolve against EPOSGamingSuite.exe
-            if (Application.ResourceAssembly == null)
-            {
-                Application.ResourceAssembly = uiAsm;
-            }
+            // Set WPF ResourceAssembly via reflection BEFORE Application.ResourceAssembly getter is ever called
+            SetWpfResourceAssembly(uiAsm);
 
             // Apply all Lib.Harmony runtime patches in memory
             EposPatchBootstrap.ApplyAll(installDir, servicesAsm, uiAsm);
@@ -137,6 +137,47 @@ public static class Program
             }
             return null;
         };
+    }
+
+    private static void StopExistingUnpatchedInstances()
+    {
+        try
+        {
+            int currentPid = Process.GetCurrentProcess().Id;
+            foreach (Process proc in Process.GetProcessesByName("EPOSGamingSuite"))
+            {
+                if (proc.Id != currentPid)
+                {
+                    try
+                    {
+                        proc.Kill();
+                        proc.WaitForExit(2000);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static void SetWpfResourceAssembly(Assembly uiAsm)
+    {
+        try
+        {
+            FieldInfo resField = typeof(Application).GetField("_resourceAssembly", BindingFlags.NonPublic | BindingFlags.Static);
+            resField?.SetValue(null, uiAsm);
+
+            Type baseUriHelperType = typeof(Application).Assembly.GetType("System.Windows.Navigation.BaseUriHelper");
+            PropertyInfo resProp = baseUriHelperType?.GetProperty("ResourceAssembly", BindingFlags.NonPublic | BindingFlags.Static);
+            resProp?.SetValue(null, uiAsm, null);
+        }
+        catch
+        {
+        }
     }
 
     private static string ResolveInstallDirectory(string[] args)
