@@ -21,23 +21,37 @@ A 100% self-contained, clean-room **Lib.Harmony** runtime patcher and launcher (
 
 ## Usage
 
-### Option A: Direct Launcher (No Admin Rights Required)
-Build the project and run `EPOSGamingSuite.Patcher.exe` directly:
+### Option A: Pre-Built Release (Recommended)
+1. Download [`EPOSGamingSuitePatcher-v1.0.0-win-x86.zip`](https://github.com/nil-commits/EposGamingSuitePatcher/releases/tag/v1.0.0) from the [Releases page](https://github.com/nil-commits/EposGamingSuitePatcher/releases) and extract it anywhere.
+2. Run `EPOSGamingSuite.Patcher.exe` directly — it locates `C:\Program Files (x86)\EPOS\Gaming Suite\EPOSGamingSuite.exe`, applies all Harmony patches in memory, and starts the UI.
+
+### Option B: Build from Source
 ```powershell
 dotnet build EPOSGamingSuite.Patcher.sln -c Release
 .\EPOSGamingSuite.Patcher\bin\x86\Release\net461\EPOSGamingSuite.Patcher.exe
 ```
-`EPOSGamingSuite.Patcher.exe` locates `C:\Program Files (x86)\EPOS\Gaming Suite\EPOSGamingSuite.exe`, applies all Harmony patches in memory, and starts the UI.
 
-### Option B: Automatic AppDomainManager Hook (Zero-Touch Startup)
+### Option C: Automatic AppDomainManager Hook (Zero-Touch Startup)
 To have the original `EPOSGamingSuite.exe` (including Desktop shortcuts and Windows Autostart) load the Harmony runtime patches automatically without modifying any EPOS `.exe` or `.dll` binary, run as Administrator:
 ```powershell
-.\EPOSGamingSuite.Patcher\bin\x86\Release\net461\EPOSGamingSuite.Patcher.exe --install
+.\EPOSGamingSuite.Patcher.exe --install
 ```
 To remove the hook and restore `EPOSGamingSuite.exe.config`:
 ```powershell
-.\EPOSGamingSuite.Patcher\bin\x86\Release\net461\EPOSGamingSuite.Patcher.exe --uninstall
+.\EPOSGamingSuite.Patcher.exe --uninstall
 ```
+
+---
+
+## Security & VirusTotal Verification
+
+All code in this repository is 100% open-source C# and can be inspected or built locally from source. Pre-built release binaries (`v1.0.0`) have the following SHA-256 checksums and VirusTotal report links:
+
+| File | SHA-256 | VirusTotal |
+| :--- | :--- | :--- |
+| `EPOSGamingSuite.Patcher.exe` | `f8dfd1330f8b46f5fefb3f2bce49b2b3f4952bd31ca404784751cf8f10084408` | [VirusTotal Report (EXE)](https://www.virustotal.com/gui/file/f8dfd1330f8b46f5fefb3f2bce49b2b3f4952bd31ca404784751cf8f10084408) |
+| `EPOSGamingSuitePatcher-v1.0.0-win-x86.zip` | `4afc8a97b4982080ab893c1285cc8b2f575c947dc8a5b545ed09489000c0ed9b` | [VirusTotal Report (ZIP)](https://www.virustotal.com/gui/file/4afc8a97b4982080ab893c1285cc8b2f575c947dc8a5b545ed09489000c0ed9b) |
+| Repository URL | `e0b04d7d00e070a04c0cb44752e710d78972c199d20ef6d73269ed46fb68cbb1` | [VirusTotal Report (Repo URL)](https://www.virustotal.com/gui/url/e0b04d7d00e070a04c0cb44752e710d78972c199d20ef6d73269ed46fb68cbb1) |
 
 ---
 
