@@ -1,42 +1,10 @@
 # EPOS Gaming Suite — Clean-Room Runtime Patcher (Lib.Harmony)
 
+> **Kudos to [REA (Reverse Engineer Anything)](https://github.com/morluto/rea)** for enabling us to completely decompile and analyze the original EPOS Gaming Suite to pinpoint and fix its underlying bugs ([see how we did it below](#how-we-reverse-engineered-it-with-rea)).
+
 A 100% self-contained, clean-room **Lib.Harmony** runtime patcher and launcher (`EPOSGamingSuite.Patcher`) for the abandoned **EPOS Gaming Suite** (`v1.12.2.1185`) on Windows 10/11.
 
 > **Legal Notice:** This repository contains **0% original EPOS/Sennheiser source code, XAML resources, graphics, or proprietary binaries**. It requires an existing local installation of the official EPOS Gaming Suite (`C:\Program Files (x86)\EPOS\Gaming Suite\`) and applies targeted runtime method patches in memory via [Lib.Harmony](https://github.com/pardeike/Harmony) to restore hardware interoperability and fix critical software bugs.
-
----
-
-## Kudos & How We Reverse Engineered It with [REA](https://github.com/morluto/rea)
-
-Huge kudos to **[REA: Reverse Engineer Anything](https://github.com/morluto/rea)** ([rea.tools](https://rea.tools/) / [`rea-agents`](https://www.npmjs.com/package/rea-agents)), the Model Context Protocol (MCP) reverse-engineering suite that made this entire investigation and patch possible.
-
-After EPOS wound down its gaming division, the **EPOS Gaming Suite (`v1.12.2.1185`)** was left unmaintained. On modern Windows 10/11 systems, the software suffered from severe reliability issues: headsets (such as the **EPOS H3PRO** / **EPOS H3PRO Dongle**, `Gsx 300`, `GSP 670`, `GSP 370`, `GTW 270`, and `B20`) would frequently fail to be recognized, startup would hang or feel sluggish, and custom EQ presets would silently break on non-English locales.
-
-### Our Reverse Engineering Workflow with REA
-
-1. **PE Layout, Entropy & Managed Metadata Triage (`inspect_binary_layout`, `inspect_byte_entropy`, `inspect_managed_artifact`)**
-   - We started from a raw memory dump (`EPOSGamingSuite_dump.exe`) of the running 32-bit process.
-   - Using REA's `inspect_binary_layout` and `inspect_pe_load_config`, we noticed that sections in the dump had `PointerToRawData == VirtualAddress` (`0x2000` instead of `0x0400`) because it was dumped directly from virtual memory without unmapping section headers.
-   - After realigning the PE section table, REA's `inspect_managed_artifact` and `project_managed_application_graph` mapped out the entire `.NET Framework 4.6.1` (`x86`) WPF architecture (`Sennheiser.Gs.UI`), its Autofac DI container (`ContainerConfig`), and its companion service assembly (`GamingSuite.UI.Services.dll`).
-
-2. **Tracing the Named Pipe IPC & Native Service Boundary (`inspect_managed_members`, `verify_managed_native_boundaries`)**
-   - Using REA to inspect the boundary between the WPF client (`EPOSGamingSuite.exe`), the managed service layer (`GamingSuite.UI.Services.dll`), and the native background Windows service (`EPOSGamingSuiteService.exe`), we reconstructed the two-way Named Pipe protocol over `\\.\pipe\GSUIPipe` and `\\.\pipe\GSUIAgentPipe`:
-     - On startup, `MainWindow` sends `[{"requestType":"4"}]` (`REQ_SW_VERSION`) and `[{"requestType":"11"}]` (`REQ_REFRESH_CONNECTED_DEVICE`).
-     - In response to `REQ_REFRESH_CONNECTED_DEVICE` (`11`), the native `EPOSGamingSuiteService` **first broadcasts `messageType: "5"` (`DEVICE_DISCONNECTED`)** and then attempts to reach decommissioned EPOS/Sennheiser cloud update servers (`HandleRestExecutorCallBack` / `processGetUpdateOrConfig`).
-     - Because those cloud servers no longer exist, the service stalls for **12–15 seconds** throwing `WinHTTP Error 12180` (`ERROR_WINHTTP_AUTODETECTION_FAILED`) before finally sending `messageType: "4"` (`DEVICE_CONNECTED`) with the connected headset payload (`VID 5013`, `PID 257`, Dongle `PID 771`).
-
-3. **Pinpointing the Windows 11 CoreAudio Crash (`PropVariant 4127`)**
-   - By inspecting `Sennheiser.Gs.UI.Services.Model.DeviceDataModel.SearchSelectedDevice` and correlating it with `GamingSuiteUI.log`, we found why Windows 11 audio endpoints (`Kopfhörer (EPOS H3PRO Dongle)` / `Kopfhörermikrofon (EPOS H3PRO Dongle)`) failed to bind:
-   - Before checking whether a `PropertyKey` matched `PKEY_DeviceInterface_FriendlyName` (`b3f8fa53-0004-438e-9003-51a46e139bfc`, `propertyId = 2`), the original code executed:
-     ```csharp
-     _logger.LogDebug(Device.Properties.GetValue(i).Value.ToString() + ...);
-     ```
-   - On Windows 10/11, CoreAudio endpoints include `VT_VECTOR | VT_LPWSTR` (`VarEnum` `4127`) properties. Calling `.Value` on `NAudio.CoreAudioApi.Interfaces.PropVariant` for type `4127` throws `System.NotSupportedException: PropVariant 4127`, aborting the loop before it ever reaches the USB `VID_1395&PID_0303` property!
-
-4. **Uncovering Copy-Paste, Dongle-PID & Locale Bugs**
-   - **Copy-Paste Bug in `UpdateDeviceInfoForPlayback`**: Removed the playback `DeviceInfo` from `allConnectedPlaybackDeviceList`, updated its firmware fields, and mistakenly added it to `allConnectedMicrophoneDeviceList`.
-   - **Unbound Dongle VID/PID**: `PopulatePlaybackDeviceData` and `PopulateMicrophoneDeviceData` never populated `selectedDevicedetailSpeaker` / `selectedDevicedetailMic` with the wireless dongle's `VID`/`PID`, causing initial Windows volume/gain lookups (`GetSelectedDeviceInfoForVolume`) to search for `VID=0, PID=0`.
-   - **Double Path Wrapping & German Locale Bug**: `PresetDataModel.GetPresetFromSettings` called `GetFilePathCustomPreset(GetFilePathCustomPreset(innerText))` twice, and parsed XML decimal strings (`6.0`, `4.02`) using the current OS thread culture—breaking on German (`de-DE`) systems that expect `,` instead of `.`.
 
 ---
 
@@ -84,3 +52,34 @@ Example output:
 2026-11-04 09:12:57.516 [INF] All Harmony runtime patches applied successfully.
 2026-11-04 09:12:58.585 [INF] Fast-connecting active EPOS audio endpoint (PID 771) via Windows CoreAudio.
 ```
+
+---
+
+## How We Reverse Engineered It with [REA](https://github.com/morluto/rea)
+
+After EPOS wound down its gaming division, the **EPOS Gaming Suite (`v1.12.2.1185`)** was left unmaintained. On modern Windows 10/11 systems, headsets (such as the **EPOS H3PRO** / **EPOS H3PRO Dongle**, `GSX 300`, `GSP 670`, `GSP 370`, `GTW 270`, and `B20`) would frequently fail to be recognized, startup would hang or feel sluggish, and custom EQ presets would silently break on non-English locales.
+
+Using **[REA: Reverse Engineer Anything](https://github.com/morluto/rea)** ([rea.tools](https://rea.tools/) / [`rea-agents`](https://www.npmjs.com/package/rea-agents)), we completely decompiled the original suite and traced the failure chain end-to-end:
+
+1. **PE Layout, Entropy & Managed Metadata Triage (`inspect_binary_layout`, `inspect_byte_entropy`, `inspect_managed_artifact`)**
+   - Starting from a raw process memory dump (`EPOSGamingSuite_dump.exe`), REA's `inspect_binary_layout` and `inspect_pe_load_config` revealed that the PE section table had `PointerToRawData == VirtualAddress` (`0x2000` instead of `0x0400`) because it was dumped directly from virtual memory without unmapping section headers.
+   - After realigning the section headers, REA's `inspect_managed_artifact` and `project_managed_application_graph` mapped the entire `.NET Framework 4.6.1` (`x86`) WPF client (`Sennheiser.Gs.UI`), its Autofac DI container (`ContainerConfig`), and its companion service assembly (`GamingSuite.UI.Services.dll`), enabling a full decompilation of all 108 UI files and 55 service files.
+
+2. **Tracing the Named Pipe IPC & Native Service Boundary (`inspect_managed_members`, `verify_managed_native_boundaries`)**
+   - Inspecting the boundary between `EPOSGamingSuite.exe`, `GamingSuite.UI.Services.dll`, and the native Windows service (`EPOSGamingSuiteService.exe`) revealed the two-way Named Pipe protocol over `\\.\pipe\GSUIPipe` and `\\.\pipe\GSUIAgentPipe`:
+     - On startup, `MainWindow` sends `[{"requestType":"4"}]` (`REQ_SW_VERSION`) and `[{"requestType":"11"}]` (`REQ_REFRESH_CONNECTED_DEVICE`).
+     - In response to `REQ_REFRESH_CONNECTED_DEVICE` (`11`), `EPOSGamingSuiteService` **first broadcasts `messageType: "5"` (`DEVICE_DISCONNECTED`)** and then attempts to reach decommissioned EPOS/Sennheiser cloud update servers (`HandleRestExecutorCallBack` / `processGetUpdateOrConfig`).
+     - Because those cloud servers are offline, the service stalls for **12–15 seconds** throwing `WinHTTP Error 12180` (`ERROR_WINHTTP_AUTODETECTION_FAILED`) before finally sending `messageType: "4"` (`DEVICE_CONNECTED`) with the headset payload (`VID 5013`, `PID 257`, Dongle `PID 771`).
+
+3. **Pinpointing the Windows 11 CoreAudio Crash (`PropVariant 4127`)**
+   - Decompiling `Sennheiser.Gs.UI.Services.Model.DeviceDataModel.SearchSelectedDevice` and correlating it with `GamingSuiteUI.log` revealed why Windows 11 audio endpoints (`Kopfhörer (EPOS H3PRO Dongle)` / `Kopfhörermikrofon (EPOS H3PRO Dongle)`) failed to bind:
+   - Before checking whether a `PropertyKey` matched `PKEY_DeviceInterface_FriendlyName` (`b3f8fa53-0004-438e-9003-51a46e139bfc`, `propertyId = 2`), the original code executed:
+     ```csharp
+     _logger.LogDebug(Device.Properties.GetValue(i).Value.ToString() + ...);
+     ```
+   - On Windows 10/11, CoreAudio endpoints expose `VT_VECTOR | VT_LPWSTR` (`VarEnum` `4127`) properties. Calling `.Value` on `NAudio.CoreAudioApi.Interfaces.PropVariant` for type `4127` throws `System.NotSupportedException: PropVariant 4127`, aborting the loop before it ever reaches the USB `VID_1395&PID_0303` property.
+
+4. **Uncovering Copy-Paste, Dongle-PID & Locale Bugs**
+   - **Copy-Paste Bug in `UpdateDeviceInfoForPlayback`**: Removed the playback `DeviceInfo` from `allConnectedPlaybackDeviceList`, updated its firmware fields, and mistakenly added it to `allConnectedMicrophoneDeviceList`.
+   - **Unbound Dongle VID/PID**: `PopulatePlaybackDeviceData` and `PopulateMicrophoneDeviceData` never populated `selectedDevicedetailSpeaker` / `selectedDevicedetailMic` with the wireless dongle's `VID`/`PID`, causing initial Windows volume/gain lookups (`GetSelectedDeviceInfoForVolume`) to search for `VID=0, PID=0`.
+   - **Double Path Wrapping & German Locale Bug**: `PresetDataModel.GetPresetFromSettings` called `GetFilePathCustomPreset(GetFilePathCustomPreset(innerText))` twice, and parsed XML decimal strings (`6.0`, `4.02`) using the current OS thread culture—breaking on German (`de-DE`) systems that expect `,` instead of `.`.
