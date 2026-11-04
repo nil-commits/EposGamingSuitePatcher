@@ -4,7 +4,7 @@
 
 A 100% self-contained, clean-room **Lib.Harmony** runtime patcher and launcher (`EPOSGamingSuite.Patcher`) for the abandoned **EPOS Gaming Suite** (`v1.12.2.1185`) on Windows 10/11.
 
-> **Legal Notice:** This repository contains **0% original EPOS/Sennheiser source code, XAML resources, graphics, or proprietary binaries**. It requires an existing local installation of the official EPOS Gaming Suite (`C:\Program Files (x86)\EPOS\Gaming Suite\`) and applies targeted runtime method patches in memory via [Lib.Harmony](https://github.com/pardeike/Harmony) to restore hardware interoperability and fix critical software bugs.
+> **Disclaimer & Legal Notice:** This is an **unofficial, community-made patch** and is **NOT affiliated with, endorsed by, or sponsored by EPOS, Sennheiser, or Demant A/S**. All product and company names are trademarks of their respective holders and are used solely for identification and interoperability purposes. This repository contains **0% original EPOS/Sennheiser source code, XAML resources, graphics, or proprietary binaries**. It requires an existing local installation of the official EPOS Gaming Suite (`C:\Program Files (x86)\EPOS\Gaming Suite\`) and applies targeted runtime method patches in memory via [Lib.Harmony](https://github.com/pardeike/Harmony) to restore hardware interoperability and fix critical software bugs.
 
 ---
 
