@@ -28,7 +28,10 @@ public static class EposPatchBootstrap
             }
 
             ServicesAssembly = servicesAsm ?? LoadOrFindAssembly(installDir, "GamingSuite.UI.Services", "GamingSuite.UI.Services.dll");
-            UiAssembly = uiAsm ?? LoadOrFindAssembly(installDir, "EPOSGamingSuite", "EPOSGamingSuite.exe");
+            if (uiAsm != null)
+            {
+                UiAssembly = uiAsm;
+            }
 
             var harmony = new Harmony(HarmonyId);
 
@@ -37,8 +40,63 @@ public static class EposPatchBootstrap
             NamedPipePatches.Apply(harmony, ServicesAssembly);
             PresetAndXmlPatches.Apply(harmony, ServicesAssembly);
 
+            if (UiAssembly != null)
+            {
+                PatchUiAssembly(harmony, UiAssembly);
+            }
+            else
+            {
+                foreach (Assembly loaded in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (string.Equals(loaded.GetName().Name, "EPOSGamingSuite", StringComparison.OrdinalIgnoreCase))
+                    {
+                        UiAssembly = loaded;
+                        PatchUiAssembly(harmony, loaded);
+                        break;
+                    }
+                }
+
+                if (UiAssembly == null)
+                {
+                    AppDomain.CurrentDomain.AssemblyLoad += (_, args) =>
+                    {
+                        if (string.Equals(args.LoadedAssembly?.GetName().Name, "EPOSGamingSuite", StringComparison.OrdinalIgnoreCase))
+                        {
+                            UiAssembly = args.LoadedAssembly;
+                            PatchUiAssembly(harmony, args.LoadedAssembly);
+                        }
+                    };
+                }
+            }
+
             _applied = true;
-            LogPatchStatus("All Harmony runtime patches applied successfully.");
+            LogPatchStatus($"All Harmony runtime patches applied successfully (Process: {Process.GetCurrentProcess().ProcessName}, PID: {Process.GetCurrentProcess().Id}).");
+        }
+    }
+
+    private static void PatchUiAssembly(Harmony harmony, Assembly uiAsm)
+    {
+        try
+        {
+            Type appType = uiAsm?.GetType("Sennheiser.Gs.UI.App");
+            MethodInfo getWindowHandle = AccessTools.Method(appType, "GetWindowHandle");
+            if (getWindowHandle != null)
+            {
+                harmony.Patch(
+                    getWindowHandle,
+                    prefix: new HarmonyMethod(typeof(EposPatchBootstrap), nameof(GetWindowHandle_Prefix)));
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    public static void GetWindowHandle_Prefix(ref string title)
+    {
+        if (string.IsNullOrEmpty(title))
+        {
+            title = "MainWindow";
         }
     }
 
@@ -52,8 +110,15 @@ public static class EposPatchBootstrap
             }
         }
 
-        string candidate = Path.Combine(installDir, fileName);
-        return File.Exists(candidate) ? Assembly.LoadFrom(candidate) : null;
+        try
+        {
+            return Assembly.Load(simpleName);
+        }
+        catch
+        {
+            string candidate = Path.Combine(installDir, fileName);
+            return File.Exists(candidate) ? Assembly.LoadFrom(candidate) : null;
+        }
     }
 
     internal static void LogPatchStatus(string message)

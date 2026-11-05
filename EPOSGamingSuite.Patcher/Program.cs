@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Security.Principal;
 using System.Windows;
 using System.Xml.Linq;
 using EPOSGamingSuite.Patcher.Patches;
@@ -10,6 +11,7 @@ namespace EPOSGamingSuite.Patcher;
 
 /// <summary>
 /// Clean-room AppDomainManager hook for zero-touch runtime patching when configured in EPOSGamingSuite.exe.config.
+/// Automatically loaded by the .NET Framework CLR every time EPOSGamingSuite.exe starts.
 /// </summary>
 public sealed class EposHarmonyDomainManager : AppDomainManager
 {
@@ -24,7 +26,7 @@ public sealed class EposHarmonyDomainManager : AppDomainManager
         }
         catch (Exception ex)
         {
-            Trace.WriteLine("[EPOSGamingSuite.Patcher] AppDomainManager init error: " + ex);
+            EposPatchBootstrap.LogPatchStatus("AppDomainManager init error: " + ex);
         }
     }
 }
@@ -32,6 +34,8 @@ public sealed class EposHarmonyDomainManager : AppDomainManager
 public static class Program
 {
     private const string DefaultInstallDir = @"C:\Program Files (x86)\EPOS\Gaming Suite";
+    private const string DomainManagerAsmValue = "EPOSGamingSuite.Patcher, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null";
+    private const string DomainManagerTypeValue = "EPOSGamingSuite.Patcher.EposHarmonyDomainManager";
 
     [STAThread]
     public static int Main(string[] args)
@@ -44,11 +48,15 @@ public static class Program
                 string cmd = args[0].Trim().ToLowerInvariant();
                 if (cmd == "--install" || cmd == "-i")
                 {
-                    return InstallAppConfigHook(installDir);
+                    return EnsureElevatedAndInstall(installDir, silent: false);
+                }
+                if (cmd == "--install-silent")
+                {
+                    return InstallAppConfigHook(installDir, silent: true);
                 }
                 if (cmd == "--uninstall" || cmd == "-u")
                 {
-                    return UninstallAppConfigHook(installDir);
+                    return EnsureElevatedAndUninstall(installDir);
                 }
             }
 
@@ -63,23 +71,37 @@ public static class Program
                 return 1;
             }
 
+            // Ensure the persistent AppDomainManager hook is installed in EPOSGamingSuite.exe.config
+            // so that closing and reopening EPOS Gaming Suite ALWAYS keeps the patches active.
+            if (!IsPersistentHookInstalled(installDir))
+            {
+                EnsureElevatedAndInstall(installDir, silent: true);
+            }
+
+            // If the persistent hook is installed, launch the real EPOSGamingSuite.exe directly
+            if (IsPersistentHookInstalled(installDir))
+            {
+                StopExistingUnpatchedInstances();
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = exePath,
+                    WorkingDirectory = installDir,
+                    UseShellExecute = true
+                });
+                return 0;
+            }
+
+            // Fallback: In-memory launch if the user declined the UAC prompt
             Environment.CurrentDirectory = installDir;
             RegisterAssemblyResolver(installDir);
-
-            // Ensure no unpatched/zombie EPOSGamingSuite.exe process is holding \\.\pipe\GSUIPipe (Error 231)
             StopExistingUnpatchedInstances();
 
-            // Load original assemblies into current AppDomain
             Assembly servicesAsm = Assembly.LoadFrom(Path.Combine(installDir, "GamingSuite.UI.Services.dll"));
             Assembly uiAsm = Assembly.LoadFrom(exePath);
 
-            // Set WPF ResourceAssembly via reflection BEFORE Application.ResourceAssembly getter is ever called
             SetWpfResourceAssembly(uiAsm);
-
-            // Apply all Lib.Harmony runtime patches in memory
             EposPatchBootstrap.ApplyAll(installDir, servicesAsm, uiAsm);
 
-            // Invoke original WPF entry point (Sennheiser.Gs.UI.App.Main)
             MethodInfo entryPoint = uiAsm.EntryPoint;
             if (entryPoint == null)
             {
@@ -202,16 +224,130 @@ public static class Program
         return DefaultInstallDir;
     }
 
-    private static int InstallAppConfigHook(string installDir)
+    private static bool IsAdministrator()
+    {
+        try
+        {
+            using WindowsIdentity identity = WindowsIdentity.GetCurrent();
+            WindowsPrincipal principal = new WindowsPrincipal(identity);
+            return principal.IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsPersistentHookInstalled(string installDir)
+    {
+        try
+        {
+            string configPath = Path.Combine(installDir, "EPOSGamingSuite.exe.config");
+            string installedPatcher = Path.Combine(installDir, "EPOSGamingSuite.Patcher.exe");
+            string installedHarmony = Path.Combine(installDir, "0Harmony.dll");
+
+            if (!File.Exists(configPath) || !File.Exists(installedPatcher) || !File.Exists(installedHarmony))
+            {
+                return false;
+            }
+
+            string currentPatcher = typeof(Program).Assembly.Location;
+            if (!string.IsNullOrEmpty(currentPatcher) && File.Exists(currentPatcher))
+            {
+                FileInfo srcInfo = new FileInfo(currentPatcher);
+                FileInfo dstInfo = new FileInfo(installedPatcher);
+                if (srcInfo.Length != dstInfo.Length)
+                {
+                    return false;
+                }
+            }
+
+            XDocument doc = XDocument.Load(configPath);
+            XElement runtime = doc.Root?.Element("runtime");
+            if (runtime == null)
+            {
+                return false;
+            }
+
+            string asmAttr = (string)runtime.Element("appDomainManagerAssembly")?.Attribute("value");
+            string typeAttr = (string)runtime.Element("appDomainManagerType")?.Attribute("value");
+            return string.Equals(asmAttr, DomainManagerAsmValue, StringComparison.Ordinal) &&
+                   string.Equals(typeAttr, DomainManagerTypeValue, StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static int EnsureElevatedAndInstall(string installDir, bool silent)
+    {
+        if (IsAdministrator())
+        {
+            return InstallAppConfigHook(installDir, silent);
+        }
+
+        try
+        {
+            string currentExe = typeof(Program).Assembly.Location;
+            string flag = silent ? "--install-silent" : "--install";
+            Process proc = Process.Start(new ProcessStartInfo
+            {
+                FileName = currentExe,
+                Arguments = $"{flag} \"{installDir}\"",
+                Verb = "runas",
+                UseShellExecute = true
+            });
+            proc?.WaitForExit(15000);
+            return proc?.ExitCode ?? 1;
+        }
+        catch
+        {
+            return 1;
+        }
+    }
+
+    private static int EnsureElevatedAndUninstall(string installDir)
+    {
+        if (IsAdministrator())
+        {
+            return UninstallAppConfigHook(installDir);
+        }
+
+        try
+        {
+            string currentExe = typeof(Program).Assembly.Location;
+            Process proc = Process.Start(new ProcessStartInfo
+            {
+                FileName = currentExe,
+                Arguments = $"--uninstall \"{installDir}\"",
+                Verb = "runas",
+                UseShellExecute = true
+            });
+            proc?.WaitForExit(15000);
+            return proc?.ExitCode ?? 1;
+        }
+        catch
+        {
+            return 1;
+        }
+    }
+
+    private static int InstallAppConfigHook(string installDir, bool silent)
     {
         try
         {
             string configPath = Path.Combine(installDir, "EPOSGamingSuite.exe.config");
             if (!File.Exists(configPath))
             {
-                MessageBox.Show($"Config file not found: {configPath}", "EPOS Patcher", MessageBoxButton.OK, MessageBoxImage.Error);
+                if (!silent)
+                {
+                    MessageBox.Show($"Config file not found: {configPath}", "EPOS Patcher", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
                 return 1;
             }
+
+            StopExistingUnpatchedInstances();
 
             string patcherDir = Path.GetDirectoryName(typeof(Program).Assembly.Location)!;
             if (!string.Equals(Path.GetFullPath(patcherDir).TrimEnd('\\'), Path.GetFullPath(installDir).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
@@ -235,20 +371,30 @@ public static class Program
                 root.Add(runtime);
             }
 
-            runtime.SetElementValue("appDomainManagerAssembly", "EPOSGamingSuite.Patcher, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null");
-            runtime.SetElementValue("appDomainManagerType", "EPOSGamingSuite.Patcher.EposHarmonyDomainManager");
+            runtime.Element("appDomainManagerAssembly")?.Remove();
+            runtime.Element("appDomainManagerType")?.Remove();
+            runtime.Add(new XElement("appDomainManagerAssembly", new XAttribute("value", DomainManagerAsmValue)));
+            runtime.Add(new XElement("appDomainManagerType", new XAttribute("value", DomainManagerTypeValue)));
             doc.Save(configPath);
 
-            MessageBox.Show(
-                $"Successfully installed the Harmony runtime hook into:\n{configPath}\n\nLaunching the original EPOSGamingSuite.exe will now automatically load all runtime fixes.",
-                "EPOS Gaming Suite Runtime Patcher",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            EposPatchBootstrap.LogPatchStatus($"Installed persistent AppDomainManager hook into {configPath}.");
+
+            if (!silent)
+            {
+                MessageBox.Show(
+                    $"Successfully installed the persistent Harmony runtime hook into:\n{configPath}\n\nClosing and reopening EPOS Gaming Suite (from Desktop, Start Menu, or Windows Startup) will now always load all runtime fixes automatically.",
+                    "EPOS Gaming Suite Runtime Patcher",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
             return 0;
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to install hook (Administrator privileges required):\n{ex.Message}", "EPOS Patcher", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (!silent)
+            {
+                MessageBox.Show($"Failed to install hook (Administrator privileges required):\n{ex.Message}", "EPOS Patcher", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
             return 1;
         }
     }
@@ -257,6 +403,7 @@ public static class Program
     {
         try
         {
+            StopExistingUnpatchedInstances();
             string configPath = Path.Combine(installDir, "EPOSGamingSuite.exe.config");
             string backupPath = configPath + ".bak";
             if (File.Exists(backupPath))
