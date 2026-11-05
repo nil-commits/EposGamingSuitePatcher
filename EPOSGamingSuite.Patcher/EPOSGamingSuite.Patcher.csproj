@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <OutputType>Exe</OutputType>
     <TargetFramework>net461</TargetFramework>
     <PlatformTarget>x86</PlatformTarget>
     <LangVersion>latest</LangVersion>
@@ -9,9 +9,16 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>EPOSGamingSuite.Patcher</AssemblyName>
     <RootNamespace>EPOSGamingSuite.Patcher</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <Version>1.0.0</Version>
-    <Description>Clean-room runtime patcher and launcher for EPOS Gaming Suite (Lib.Harmony)</Description>
+    <Version>1.0.1.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.1.0</FileVersion>
+    <Title>EPOS Gaming Suite Community Patch Installer</Title>
+    <Product>EPOS Gaming Suite Community Patch</Product>
+    <Company>nil-commits</Company>
+    <Copyright>Copyright (c) 2026 nil-commits (MIT License)</Copyright>
+    <Description>Clean-room Lib.Harmony runtime patch installer for EPOS Gaming Suite</Description>
   </PropertyGroup>
 
   <ItemGroup>

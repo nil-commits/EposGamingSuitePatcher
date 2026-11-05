@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using HarmonyLib;
@@ -70,7 +69,7 @@ public static class EposPatchBootstrap
             }
 
             _applied = true;
-            LogPatchStatus($"All Harmony runtime patches applied successfully (Process: {Process.GetCurrentProcess().ProcessName}, PID: {Process.GetCurrentProcess().Id}).");
+            LogPatchStatus("All Harmony runtime patches applied successfully.");
         }
     }
 
@@ -125,7 +124,6 @@ public static class EposPatchBootstrap
     {
         try
         {
-            Trace.WriteLine("[EPOSGamingSuite.Patcher] " + message);
             string logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "EPOS", "Gaming Suite", "Logs");
             if (Directory.Exists(logDir))
             {
