@@ -55,13 +55,11 @@ internal static class NamedPipePatches
             {
                 if (val == 4096)
                 {
-                    yield return new CodeInstruction(OpCodes.Ldc_I4, 65536);
-                    continue;
+                    instruction.operand = 65536;
                 }
-                if (val == 2000)
+                else if (val == 2000)
                 {
-                    yield return new CodeInstruction(OpCodes.Ldc_I4, 100);
-                    continue;
+                    instruction.operand = 100;
                 }
             }
             yield return instruction;
